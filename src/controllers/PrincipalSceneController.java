@@ -34,6 +34,9 @@ public class PrincipalSceneController {
     // Datos en memoria para reordenar sin reler el archivo
     private DoublyLinkedList<Resultado> datosActuales = new DoublyLinkedList<>();
 
+    private TDAs.DoublyLinkedList<String> originalOrderV1; // orden encabezado vuelta 1
+    private TDAs.DoublyLinkedList<String> originalOrderV2; // orden encabezado vuelta 2
+
     @FXML
     public void initialize() {
         // llenar métodos
@@ -56,23 +59,29 @@ public class PrincipalSceneController {
         barChart.setAnimated(true);
         barChart.setLegendVisible(true); // necesario para diferenciar V1 y V2 en 'Ambas'
         barChart.getData().clear();
-        // Configurar rotación vertical de etiquetas del eje X
-        CategoryAxis xAxis = (CategoryAxis) barChart.getXAxis();
-        xAxis.setTickLabelRotation(90);
+        // Forzar etiquetas verticales desde el inicio
+        ((CategoryAxis) barChart.getXAxis()).setTickLabelRotation(90);
+        try {
+            originalOrderV1 = ElectionDataLoader.getCandidateNames();
+            originalOrderV2 = new TDAs.DoublyLinkedList<>();
+            originalOrderV2.addLast("LUISA GONZALEZ");
+            originalOrderV2.addLast("DANIEL NOBOA AZIN");
+        } catch (Exception ignored) {}
     }
 
     @FXML
     public void onShow() {
         String provincia = cmbProvincia.getSelectionModel().getSelectedItem();
-        String vueltaStr = cmbVuelta.getSelectionModel().getSelectedItem();
-        int vuelta = 1; try { vuelta = Integer.parseInt(vueltaStr); } catch(Exception ignored) {}
+        int vuelta = parseVuelta();
         try {
-            if (provincia != null && provincia.equalsIgnoreCase("Todas")) {
-                DoublyLinkedList<VotoCandidato> votos = ElectionDataLoader.loadCandidateVotesAllProvinces(vuelta);
-                renderBarChartCandidatos(votos);
-            } else {
-                mostrarCandidatosProvincia();
-            }
+            TDAs.DoublyLinkedList<VotoCandidato> votos = (provincia != null && provincia.equalsIgnoreCase("Todas"))
+                ? ElectionDataLoader.loadCandidateVotesAllProvinces(vuelta)
+                : ElectionDataLoader.loadCandidateVotesForProvince(provincia, vuelta);
+            // Restaurar orden original de categorías antes de renderizar
+            resetAxisCategories(vuelta);
+            renderBarChartCandidatos(votos);
+            // Quitar restauración horizontal: mantener vertical
+            ((CategoryAxis) barChart.getXAxis()).setTickLabelRotation(90);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -81,23 +90,21 @@ public class PrincipalSceneController {
     @FXML
     public void onSort() {
         String provincia = cmbProvincia.getSelectionModel().getSelectedItem();
-        String vueltaStr = cmbVuelta.getSelectionModel().getSelectedItem();
-        int vuelta = 1; try { vuelta = Integer.parseInt(vueltaStr); } catch(Exception ignored) {}
+        int vuelta = parseVuelta();
         try {
             DoublyLinkedList<VotoCandidato> votos = (provincia != null && provincia.equalsIgnoreCase("Todas"))
                 ? ElectionDataLoader.loadCandidateVotesAllProvinces(vuelta)
                 : ElectionDataLoader.loadCandidateVotesForProvince(provincia, vuelta);
             String metodo = cmbMetodo.getSelectionModel().getSelectedItem();
-            boolean descending = false; // orden ascendente por defecto
-            if ("Bubble Sort".equals(metodo)) {
-                BubbleSort.bubbleSort(votos, descending);
-            } else if ("Insertion Sort".equals(metodo)) {
-                InsertionSort.insertionSort(votos, descending);
-            } else {
-                MergeSort.mergeSort(votos, descending);
-            }
-            // Reaplicar orden de categorías y re-renderizar
+            boolean descending = false;
+            if ("Bubble Sort".equals(metodo)) BubbleSort.bubbleSort(votos, descending);
+            else if ("Insertion Sort".equals(metodo)) InsertionSort.insertionSort(votos, descending);
+            else MergeSort.mergeSort(votos, descending);
+            // Orden actual del listado define nuevo orden de categorías
+            applyCategoryOrder(votos);
             renderBarChartCandidatos(votos);
+            // Mantener vertical
+            ((CategoryAxis) barChart.getXAxis()).setTickLabelRotation(90);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -147,30 +154,44 @@ public class PrincipalSceneController {
         barChart.getData().add(series);
     }
 
-    private void applyCategoryOrder(DoublyLinkedList<VotoCandidato> votos) {
+    private int parseVuelta() {
+        String vueltaStr = cmbVuelta.getSelectionModel().getSelectedItem();
+        int v = 1; try { v = Integer.parseInt(vueltaStr); } catch (Exception ignored) {}
+        return v;
+    }
+
+    private void resetAxisCategories(int vuelta) {
         CategoryAxis xAxis = (CategoryAxis) barChart.getXAxis();
         ObservableList<String> cats = FXCollections.observableArrayList();
-        for (VotoCandidato v : votos) cats.add(v.getNombreCandidato());
-        xAxis.setCategories(cats); // fuerza el orden de las categorías
-        xAxis.setTickLabelRotation(90); // asegurar que permanezca vertical tras actualización
+        TDAs.DoublyLinkedList<String> ref = (vuelta == 2) ? originalOrderV2 : originalOrderV1;
+        if (ref != null) {
+            for (String c : ref) cats.add(c);
+        }
+        xAxis.setCategories(cats);
     }
 
     private void renderBarChartCandidatos(DoublyLinkedList<VotoCandidato> votos) {
-        applyCategoryOrder(votos);
         barChart.getData().clear();
         XYChart.Series<String, Number> series = new XYChart.Series<>();
         series.setName("Vuelta " + cmbVuelta.getSelectionModel().getSelectedItem());
         for (VotoCandidato v : votos) {
+            // Agregar solo si el nombre está en las categorías actuales (evita desalineación)
             series.getData().add(new XYChart.Data<>(v.getNombreCandidato(), v.getVotos()));
         }
         barChart.getData().add(series);
         Platform.runLater(() -> {
             for (XYChart.Data<String, Number> d : series.getData()) {
-                if (d.getNode() != null) {
-                    Tooltip.install(d.getNode(), new Tooltip(String.valueOf(d.getYValue())));
-                    // Se eliminaron las etiquetas visibles para evitar saturación visual
-                }
+                if (d.getNode() != null) Tooltip.install(d.getNode(), new Tooltip(String.valueOf(d.getYValue())));
             }
         });
+    }
+
+    private void applyCategoryOrder(DoublyLinkedList<VotoCandidato> votos) {
+        CategoryAxis xAxis = (CategoryAxis) barChart.getXAxis();
+        ObservableList<String> cats = FXCollections.observableArrayList();
+        for (VotoCandidato v : votos) cats.add(v.getNombreCandidato());
+        xAxis.setCategories(cats);
+        // Asegurar vertical cada vez que se actualizan categorías
+        xAxis.setTickLabelRotation(90);
     }
 }

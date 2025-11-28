@@ -121,6 +121,13 @@ public class ElectionDataLoader {
         return lista;
     }
 
+    // Helper: determina si un candidato debe incluirse según la vuelta
+    private static boolean includeCandidate(String nombreCandidato, int vuelta) {
+        if (vuelta != 2) return true; // en primera vuelta incluir todos
+        String n = nombreCandidato.trim().toUpperCase();
+        return n.equals("LUISA GONZALEZ") || n.equals("DANIEL NOBOA AZIN");
+    }
+
     // Carga votos de candidatos para una provincia y vuelta específica
     public static TDAs.DoublyLinkedList<VotoCandidato> loadCandidateVotesForProvince(String provincia, int vuelta) throws IOException {
         TDAs.DoublyLinkedList<VotoCandidato> votos = new TDAs.DoublyLinkedList<>();
@@ -150,6 +157,7 @@ public class ElectionDataLoader {
                 if (vueltaVal != vuelta) continue;
                 for (int c = startCandidates; c < endCandidates; c++) {
                     String nombreCandidato = headers[c].trim();
+                    if (!includeCandidate(nombreCandidato, vuelta)) continue; // filtrar segunda vuelta
                     String valor = cols[c].trim();
                     int votosC = parseEntero(valor);
                     votos.addLast(new VotoCandidato(nombreCandidato, votosC));
@@ -177,9 +185,11 @@ public class ElectionDataLoader {
                 if (headers[i].trim().equalsIgnoreCase("VOTOS VALIDOS")) { endCandidates = i; break; }
             }
             if (endCandidates == -1) endCandidates = headers.length;
-            // Inicializar resultado con candidatos y 0 votos
+            // Inicializar candidatos según vuelta
             for (int c = startCandidates; c < endCandidates; c++) {
-                resultado.addLast(new VotoCandidato(headers[c].trim(), 0));
+                String nombreCandidato = headers[c].trim();
+                if (!includeCandidate(nombreCandidato, vuelta)) continue;
+                resultado.addLast(new VotoCandidato(nombreCandidato, 0));
             }
             String line;
             while ((line = br.readLine()) != null) {
@@ -187,22 +197,23 @@ public class ElectionDataLoader {
                 String[] cols = line.split(",");
                 int vueltaVal = parseEnteroSafe(cols, vueltaIdx);
                 if (vueltaVal != vuelta) continue;
-                // acumular por columna de candidato
-                int idx = 0;
+                // acumular
+                int idxResultado = 0;
                 for (int c = startCandidates; c < endCandidates; c++) {
+                    String nombreCandidato = headers[c].trim();
+                    if (!includeCandidate(nombreCandidato, vuelta)) continue;
                     String valor = cols[c].trim();
                     int votosC = parseEntero(valor);
-                    // obtener elemento en posición idx dentro de resultado y sumarle votos
-                    // Recorremos iterador hasta idx
+                    // avanzar hasta idxResultado en lista resultado
                     int j = 0;
                     for (VotoCandidato vc : resultado) {
-                        if (j == idx) {
+                        if (j == idxResultado) {
                             vc.setVotos(vc.getVotos() + votosC);
                             break;
                         }
                         j++;
                     }
-                    idx++;
+                    idxResultado++;
                 }
             }
         }
