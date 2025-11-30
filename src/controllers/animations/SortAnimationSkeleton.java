@@ -23,10 +23,15 @@ public class SortAnimationSkeleton {
         return pt;
     }
 
-    // Intercambia los elementos en la serie (datos) después de completar la animación
+    // Intercambia los valores Y en la serie (votos) después de completar la animación
+    // IMPORTANT: sólo intercambiamos Y para evitar reasignar categorías X durante la animación.
     public static void swapData(XYChart.Series<String, Number> series, int i, int j) {
-        XYChart.Data<String, Number> temp = series.getData().get(i);
-        series.getData().set(i, series.getData().get(j));
-        series.getData().set(j, temp);
+        if (i < 0 || j < 0 || i >= series.getData().size() || j >= series.getData().size()) return;
+        XYChart.Data<String, Number> di = series.getData().get(i);
+        XYChart.Data<String, Number> dj = series.getData().get(j);
+        Number yi = di.getYValue();
+        Number yj = dj.getYValue();
+        di.setYValue(yj);
+        dj.setYValue(yi);
     }
 }
