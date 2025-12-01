@@ -11,3 +11,32 @@
 	-fx-background-radius: 50px;
 	-fx-border-style: solid;
 }
+/* Added combo-box styles to match UI */
+.combo-box {
+    -fx-background-color: white;      
+    -fx-background-radius: 13px;
+    -fx-border-radius: 13px;
+    -fx-border-color: #FFFFFF00;      
+}
+.combo-box .text {
+    -fx-font-family: "PT Serif";  
+    -fx-font-size: 14px;
+    -fx-fill: black;             
+}
+.combo-box-popup .list-cell {
+    -fx-background-color: white;     
+    -fx-text-fill: black;             
+    -fx-font-family: "PT Serif";
+    -fx-font-size: 14px;
+}
+.combo-box-popup .list-cell:hover {
+    -fx-background-color: #e1ff00;  
+    -fx-text-fill: white;          
+}
+.combo-box .arrow-button {
+    -fx-background-color: #e1ff00;
+    -fx-background-radius: 0 13px 13px 0;
+}
+.combo-box .arrow-button .arrow {
+    -fx-background-color: black;    
+}

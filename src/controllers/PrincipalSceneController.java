@@ -4,13 +4,17 @@ import TDAs.BubbleSort;
 import TDAs.DoublyLinkedList;
 import TDAs.InsertionSort;
 import TDAs.MergeSort;
-import controllers.animations.SortAnimationSkeleton;
+import controllers.animations.BubbleSortAnimation;
+import controllers.animations.InsertionSortAnimation;
+import controllers.animations.MergeSortAnimation;
 import data.ElectionDataLoader;
 import javafx.animation.*;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
+import javafx.geometry.Bounds;
+import javafx.scene.Node;
 import javafx.scene.chart.BarChart;
 import javafx.scene.chart.CategoryAxis;
 import javafx.scene.chart.NumberAxis;
@@ -21,8 +25,10 @@ import javafx.scene.control.Label;
 import javafx.scene.control.Tooltip;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.StackPane;
+import javafx.scene.paint.Color;
 import javafx.scene.text.Text;
 import javafx.scene.text.Font;
+import javafx.scene.text.TextAlignment;
 import javafx.util.Duration;
 import model.Resultado;
 import model.VotoCandidato;
@@ -45,6 +51,11 @@ public class PrincipalSceneController {
     private TDAs.DoublyLinkedList<String> originalOrderV1; // orden encabezado vuelta 1
     private TDAs.DoublyLinkedList<String> originalOrderV2; // orden encabezado vuelta 2
 
+    // Remove old percentLabels field and related methods; keep only one overlay system
+    private final java.util.List<Label> percentageOverlayLabels = new java.util.ArrayList<>(); // track labels added to plot area
+    private final java.util.List<Label> valueOverlayLabels = new java.util.ArrayList<>(); // track labels added to plot area
+    private final java.util.Map<XYChart.Data<String,Number>, Label> voteLabelsMap = new java.util.HashMap<>();
+
     @FXML
     public void initialize() {
         // llenar métodos
@@ -64,7 +75,8 @@ public class PrincipalSceneController {
             e.printStackTrace();
         }
         // estilos básicos del BarChart
-        barChart.setAnimated(true);
+        // Disable default chart animations so bars don't animate in
+        barChart.setAnimated(false);
         // Hide legend (user requested) - previously true
         barChart.setLegendVisible(false);
         barChart.getData().clear();
@@ -81,7 +93,10 @@ public class PrincipalSceneController {
 
         // Recentrar automáticamente al cambiar el tamaño del pane
         try {
-            centerPane.widthProperty().addListener((obs, o, n) -> Platform.runLater(this::centerBarChart));
+            centerPane.widthProperty().addListener((obs, o, n) -> Platform.runLater(() -> { centerBarChart(); repositionPercentageOverlayLabels(); }));
+            centerPane.heightProperty().addListener((obs, o, n) -> Platform.runLater(this::repositionPercentageOverlayLabels));
+            centerPane.widthProperty().addListener((obs, o, n) -> Platform.runLater(this::repositionValueOverlayLabels));
+            centerPane.heightProperty().addListener((obs, o, n) -> Platform.runLater(this::repositionValueOverlayLabels));
         } catch (Exception ignore) {}
     }
 
@@ -98,6 +113,8 @@ public class PrincipalSceneController {
             renderBarChartCandidatos(votos);
             // Quitar restauración horizontal: mantener vertical
             ((CategoryAxis) barChart.getXAxis()).setTickLabelRotation(90);
+            // After rendering, install vote labels
+            Platform.runLater(() -> attachAndShowVoteLabels());
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -115,59 +132,63 @@ public class PrincipalSceneController {
             String metodo = cmbMetodo.getSelectionModel().getSelectedItem();
             boolean descending = false;
 
-            // Render the current (unsorted) data first so we have nodes to animate
+            // Render current data first (ensures nodes exist)
             renderBarChartCandidatos(votos);
 
-            // Grab the displayed series (assumes single series for candidates)
             if (barChart.getData().isEmpty()) return;
             XYChart.Series<String, Number> series = barChart.getData().get(0);
 
-            // Build arrays representing current values and names in display order
             int n = series.getData().size();
             int[] values = new int[n];
-            String[] names = new String[n];
             for (int i = 0; i < n; i++) {
                 XYChart.Data<String, Number> d = series.getData().get(i);
                 values[i] = d.getYValue() == null ? 0 : d.getYValue().intValue();
-                names[i] = d.getXValue();
             }
 
-            // If the displayed values are already sorted according to the desired order, do nothing
-            if (SortAnimationSkeleton.isSorted(values, descending)) {
-                return; // nada ocurre si ya está ordenado
-            }
+            // isSorted per algorithm
+            boolean alreadySorted;
+            if ("Bubble Sort".equals(metodo)) alreadySorted = BubbleSortAnimation.isSorted(values, descending);
+            else if ("Insertion Sort".equals(metodo)) alreadySorted = InsertionSortAnimation.isSorted(values, descending);
+            else alreadySorted = MergeSortAnimation.isSorted(values, descending);
+            if (alreadySorted) return;
 
-            // Record swap operations according to chosen algorithm (on a copy)
+            // record swaps per algorithm
             int[] copy = Arrays.copyOf(values, values.length);
             List<int[]> swaps;
-            if ("Bubble Sort".equals(metodo)) swaps = SortAnimationSkeleton.recordBubbleSwaps(copy, descending);
-            else if ("Insertion Sort".equals(metodo)) swaps = SortAnimationSkeleton.recordInsertionSwaps(copy, descending);
-            else swaps = SortAnimationSkeleton.recordFinalOrderSwaps(copy, descending); // for Merge we compute swaps to reach final order
+            if ("Bubble Sort".equals(metodo)) swaps = BubbleSortAnimation.recordBubbleSwaps(copy, descending);
+            else if ("Insertion Sort".equals(metodo)) swaps = InsertionSortAnimation.recordInsertionSwaps(copy, descending);
+            else swaps = MergeSortAnimation.recordFinalOrderSwaps(copy, descending);
 
-            // Run the real sort to update underlying data model (keeps other logic unchanged)
+            // Update underlying data structure using selected algorithm (no change to logic)
             if ("Bubble Sort".equals(metodo)) BubbleSort.bubbleSort(votos, descending);
             else if ("Insertion Sort".equals(metodo)) InsertionSort.insertionSort(votos, descending);
             else MergeSort.mergeSort(votos, descending);
 
-            // Compute per-swap duration so the whole animation lasts ~30 seconds (30000 ms)
             long totalMs = 30000L;
             int swapCount = (swaps == null) ? 0 : swaps.size();
-            double stepMs = 200; // default fallback
-            if (swapCount > 0) {
-                stepMs = (double) totalMs / (double) swapCount;
-            }
-            // clamp to reasonable bounds: at least 30ms, at most 8000ms per swap
+            double stepMs = (swapCount > 0) ? (double) totalMs / (double) swapCount : 200.0;
             stepMs = Math.max(30.0, Math.min(stepMs, 8000.0));
-
-            // Animate the recorded swaps on the displayed series. Use Platform.runLater to ensure nodes are ready
             final Duration stepDuration = Duration.millis(stepMs);
-            Platform.runLater(() -> SortAnimationSkeleton.animateSwapsOnSeries(barChart, centerPane, series, swaps, stepDuration, () -> {
-                // After animation completes, ensure final categories/order reflect underlying data
-                applyCategoryOrder(votos);
-                renderBarChartCandidatos(votos);
-            }));
 
-            // Mantener vertical
+            Platform.runLater(() -> {
+                // Prepare overlays/tick cache using any of the animation classes (identical logic)
+                // We choose BubbleSortAnimation as generic prep; behavior is the same.
+                try { BubbleSortAnimation.prepareOverlays(barChart, centerPane, series); } catch (Exception ignore) {}
+
+                Runnable after = () -> {
+                    applyCategoryOrder(votos);
+                    renderBarChartCandidatos(votos);
+                };
+
+                if ("Bubble Sort".equals(metodo)) {
+                    BubbleSortAnimation.animateSwapsOnSeries(barChart, centerPane, series, swaps, stepDuration, after);
+                } else if ("Insertion Sort".equals(metodo)) {
+                    InsertionSortAnimation.animateSwapsOnSeries(barChart, centerPane, series, swaps, stepDuration, after);
+                } else {
+                    MergeSortAnimation.animateSwapsOnSeries(barChart, centerPane, series, swaps, stepDuration, after);
+                }
+            });
+
             ((CategoryAxis) barChart.getXAxis()).setTickLabelRotation(90);
         } catch (Exception e) {
             e.printStackTrace();
@@ -230,52 +251,190 @@ public class PrincipalSceneController {
             series.getData().add(new XYChart.Data<>(v.getNombreCandidato(), v.getVotos()));
         }
         barChart.getData().add(series);
-        // Ajustar eje Y para evitar extensión extra hacia arriba
         adjustYAxisToSeries(series);
-
         Platform.runLater(() -> {
-            // Asegurar que el chart esté centrado before overlays
             try { centerBarChart(); } catch (Exception ignore) {}
-
-            // update bar node styles and tooltip
-            for (XYChart.Data<String, Number> d : series.getData()) {
-                if (d.getNode() != null) {
-                    Tooltip.install(d.getNode(), new Tooltip(String.valueOf(d.getYValue())));
-                    try { d.getNode().setStyle("-fx-bar-fill: #2196F3;"); } catch (Exception ignore) {}
-                }
-            }
-
-            // Color legend symbols to match the bars using lookup
-            try {
-                java.util.Set<javafx.scene.Node> symbols = barChart.lookupAll(".chart-legend-item-symbol");
-                for (javafx.scene.Node sym : symbols) {
-                    try { sym.setStyle("-fx-background-color: #2196F3;"); } catch (Exception ignore) {}
-                }
-            } catch (Exception ignore) {}
-
-            // Ensure layout is up-to-date before computing bounds and creating overlays
             try { if (barChart != null) { barChart.applyCss(); barChart.layout(); } } catch (Exception ignore) {}
-
-            // Delegate overlay creation and caching to SortAnimationSkeleton
-            try {
-                SortAnimationSkeleton.prepareOverlays(barChart, centerPane, series);
-            } catch (Exception ignore) {}
+            // Add absolute value overlays (black, left-aligned, collision aware)
+            addValueLabels(barChart);
         });
     }
 
-    private void applyCategoryOrder(DoublyLinkedList<VotoCandidato> votos) {
-        CategoryAxis xAxis = (CategoryAxis) barChart.getXAxis();
-        ObservableList<String> cats = FXCollections.observableArrayList();
-        for (VotoCandidato v : votos) cats.add(v.getNombreCandidato());
-        xAxis.setCategories(cats);
-        // Asegurar vertical cada vez que se actualizan categorías
-        xAxis.setTickLabelRotation(90);
+    // -------- Value overlays (absolute votes) --------
+    private void addValueLabels(BarChart<String, Number> chart) {
+        if (chart == null || chart.getData().isEmpty()) return;
+        XYChart.Series<String, Number> series = chart.getData().get(0);
+        if (series.getData().isEmpty()) return;
+        // clear previous vote overlays from plot area parent
+        Node plotArea = chart.lookup(".chart-plot-background");
+        Pane parent = (plotArea != null && plotArea.getParent() instanceof Pane) ? (Pane) plotArea.getParent() : null;
+        if (parent == null) return;
+        if(!valueOverlayLabels.isEmpty()){
+            try { parent.getChildren().removeAll(valueOverlayLabels); } catch(Exception ignore){}
+            valueOverlayLabels.clear();
+        }
+        java.text.NumberFormat nf = java.text.NumberFormat.getIntegerInstance(java.util.Locale.US);
+        for(XYChart.Data<String, Number> d: series.getData()){
+            Node bar = d.getNode(); if(bar==null || d.getYValue()==null) continue;
+            String text = nf.format(d.getYValue().longValue());
+            Label lbl = new Label(text);
+            lbl.getStyleClass().add("bar-votes-label");
+            lbl.setStyle("-fx-font-family: 'PT Serif'; -fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: black;");
+            lbl.setTextAlignment(TextAlignment.LEFT);
+            try{
+                Bounds barScene = bar.localToScene(bar.getBoundsInLocal());
+                Bounds barLocal = chart.sceneToLocal(barScene);
+                double x = barLocal.getMinX()+2;
+                double y = barLocal.getMinY()-8;
+                lbl.setLayoutX(x);
+                lbl.setLayoutY(y);
+            } catch(Exception ignore){}
+            valueOverlayLabels.add(lbl);
+            try { parent.getChildren().add(lbl); lbl.toFront(); } catch(Exception ignore){}
+        }
+        resolveValueLabelCollisions();
+    }
+
+    private void repositionValueOverlayLabels() {
+        if (barChart == null || valueOverlayLabels.isEmpty()) return;
+        try { barChart.applyCss(); barChart.layout(); } catch (Exception ignore) {}
+        XYChart.Series<String, Number> series = barChart.getData().isEmpty() ? null : barChart.getData().get(0);
+        if (series == null) return;
+        int idx = 0;
+        for (XYChart.Data<String, Number> d : series.getData()) {
+            if (idx >= valueOverlayLabels.size()) break;
+            Label lbl = valueOverlayLabels.get(idx);
+            Node bar = d.getNode();
+            if (bar == null) { idx++; continue; }
+            try {
+                Bounds barScene = bar.localToScene(bar.getBoundsInLocal());
+                Bounds barLocal = barChart.sceneToLocal(barScene);
+                double x = barLocal.getMinX() + 2;
+                double yPos = barLocal.getMinY() - 8;
+                lbl.setLayoutX(x);
+                lbl.setLayoutY(yPos);
+            } catch (Exception ignore) {}
+            idx++;
+        }
+        resolveValueLabelCollisions();
+    }
+
+    private void resolveValueLabelCollisions() {
+        if (valueOverlayLabels.size() < 2) return;
+        valueOverlayLabels.sort(java.util.Comparator.comparingDouble(Label::getLayoutX));
+        for (int i = 1; i < valueOverlayLabels.size(); i++) {
+            Label current = valueOverlayLabels.get(i);
+            for (int j = 0; j < i; j++) {
+                Label prev = valueOverlayLabels.get(j);
+                if (labelsOverlap(prev, current)) {
+                    current.setLayoutY(Math.max(2, current.getLayoutY() - (prev.getHeight() + 4))); // raise a bit
+                    j = -1; // restart checks
+                }
+            }
+        }
+    }
+
+    private String formatNumber(long n) {
+        java.text.NumberFormat nf = java.text.NumberFormat.getInstance(java.util.Locale.US);
+        nf.setGroupingUsed(true);
+        return nf.format(n);
+    }
+    // -----------------------------------------------
+
+    // ----------------- Percentage overlays -----------------
+    // Single method to add percentage labels (left-aligned at bar start, black color)
+    private void addPercentageLabels(BarChart<String, Number> chart) {
+        if (chart == null || chart.getData().isEmpty()) return;
+        XYChart.Series<String, Number> series = chart.getData().get(0);
+        if (series.getData().isEmpty()) return;
+        double total = 0;
+        for (XYChart.Data<String, Number> d : series.getData()) {
+            Number y = d.getYValue();
+            if (y != null) total += y.doubleValue();
+        }
+        if (total <= 0) return;
+        Node plotArea = chart.lookup(".chart-plot-background");
+        Pane parent = (plotArea != null && plotArea.getParent() instanceof Pane) ? (Pane) plotArea.getParent() : null;
+        if (parent == null) return;
+        // Clear previous overlays
+        if (!percentageOverlayLabels.isEmpty()) {
+            try { parent.getChildren().removeAll(percentageOverlayLabels); } catch (Exception ignore) {}
+            percentageOverlayLabels.clear();
+        }
+        for (XYChart.Data<String, Number> d : series.getData()) {
+            Node bar = d.getNode();
+            if (bar == null || d.getYValue() == null) continue;
+            double pct = (d.getYValue().doubleValue() / total) * 100.0;
+            String text = (pct < 10.0) ? String.format(java.util.Locale.US, "%.3f%%", pct) : (pct < 100.0 ? String.format(java.util.Locale.US, "%.2f%%", pct) : "100%");
+            Label lbl = new Label(text);
+            lbl.getStyleClass().add("bar-percentage-label");
+            lbl.setStyle("-fx-font-family: 'PT Serif'; -fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: black;");
+            lbl.setTextAlignment(TextAlignment.LEFT);
+            try {
+                Bounds barScene = bar.localToScene(bar.getBoundsInLocal());
+                Bounds barLocal = chart.sceneToLocal(barScene);
+                double x = barLocal.getMinX() + 2;
+                double y = barLocal.getMinY() - 8;
+                lbl.setLayoutX(x);
+                lbl.setLayoutY(y);
+            } catch (Exception ignore) {}
+            percentageOverlayLabels.add(lbl);
+            try { parent.getChildren().add(lbl); lbl.toFront(); } catch (Exception ignore) {}
+        }
+        resolvePercentageLabelCollisions();
+    }
+
+    // Collision resolution by raising overlapping labels upward
+    private void resolvePercentageLabelCollisions() {
+        if (percentageOverlayLabels.size() < 2) return;
+        percentageOverlayLabels.sort(java.util.Comparator.comparingDouble(Label::getLayoutX));
+        for (int i = 1; i < percentageOverlayLabels.size(); i++) {
+            Label current = percentageOverlayLabels.get(i);
+            for (int j = 0; j < i; j++) {
+                Label prev = percentageOverlayLabels.get(j);
+                if (labelsOverlap(prev, current)) {
+                    current.setLayoutY(Math.max(2, current.getLayoutY() - (prev.getHeight() + 4))); // raise above previous
+                    j = -1; // restart checks
+                }
+            }
+        }
+    }
+
+    private boolean labelsOverlap(Label a, Label b) {
+        double ax1 = a.getLayoutX(), ax2 = ax1 + a.getWidth();
+        double ay1 = a.getLayoutY(), ay2 = ay1 + a.getHeight();
+        double bx1 = b.getLayoutX(), bx2 = bx1 + b.getWidth();
+        double by1 = b.getLayoutY(), by2 = by1 + b.getHeight();
+        return ax1 <= bx2 && bx1 <= ax2 && ay1 <= by2 && by1 <= ay2;
+    }
+
+    // Reposition overlays after resize/layout updates
+    private void repositionPercentageOverlayLabels() {
+        if (barChart == null || percentageOverlayLabels.isEmpty()) return;
+        try { barChart.applyCss(); barChart.layout(); } catch (Exception ignore) {}
+        XYChart.Series<String, Number> series = barChart.getData().isEmpty() ? null : barChart.getData().get(0);
+        if (series == null) return;
+        int idx = 0;
+        for (XYChart.Data<String, Number> d : series.getData()) {
+            if (idx >= percentageOverlayLabels.size()) break;
+            Label lbl = percentageOverlayLabels.get(idx);
+            Node bar = d.getNode();
+            if (bar == null) { idx++; continue; }
+            try {
+                Bounds barScene = bar.localToScene(bar.getBoundsInLocal());
+                Bounds barLocal = barChart.sceneToLocal(barScene);
+                double x = barLocal.getMinX() + 2;
+                double y = barLocal.getMinY() - 8;
+                lbl.setLayoutX(x);
+                lbl.setLayoutY(y);
+            } catch (Exception ignore) {}
+            idx++;
+        }
+        resolvePercentageLabelCollisions();
     }
 
     // ----------------- Animation helpers -----------------
-
-    // The swap-recording and sorting-check helpers were moved to SortAnimationSkeleton
-
+    // (implemented in per-algorithm animation classes)
     // ----------------- Non-animation helpers -----------------
 
     // Ajusta el eje Y (NumberAxis) para limitar la extensión superior en base a los datos de la serie
@@ -334,5 +493,92 @@ public class PrincipalSceneController {
                 barChart.setLayoutX(desiredX);
             }
         } catch (Exception ignore) {}
+    }
+
+    // Add formatter helper
+    private String formatPct(double pct){
+        if(pct<10.0) return String.format(java.util.Locale.US,"%.3f%%",pct);
+        if(pct<100.0) return String.format(java.util.Locale.US,"%.2f%%",pct);
+        return "100%";
+    }
+
+    private void applyCategoryOrder(DoublyLinkedList<VotoCandidato> votos) {
+        CategoryAxis xAxis = (CategoryAxis) barChart.getXAxis();
+        ObservableList<String> cats = FXCollections.observableArrayList();
+        for (VotoCandidato v : votos) cats.add(v.getNombreCandidato());
+        xAxis.setCategories(cats);
+        xAxis.setTickLabelRotation(90);
+    }
+
+    private void attachAndShowVoteLabels() {
+        if (barChart == null || barChart.getData().isEmpty()) return;
+        XYChart.Series<String, Number> series = barChart.getData().get(0);
+        if (series.getData().isEmpty()) return;
+        // Remove existing label nodes from centerPane
+        for (Label lbl : voteLabelsMap.values()) {
+            try { centerPane.getChildren().remove(lbl); } catch (Exception ignore) {}
+        }
+        voteLabelsMap.clear();
+        java.text.NumberFormat nf = java.text.NumberFormat.getIntegerInstance(java.util.Locale.US);
+        for (XYChart.Data<String, Number> d : series.getData()) {
+            Number y = d.getYValue();
+            Node bar = d.getNode();
+            if (bar == null || y == null) continue;
+            Label lbl = new Label(nf.format(y.longValue()));
+            lbl.setStyle("-fx-font-family:'PT Serif'; -fx-font-size:12px; -fx-font-weight:bold; -fx-text-fill:black;");
+            lbl.setTextAlignment(TextAlignment.LEFT);
+            lbl.setManaged(false); // overlay positioning
+            centerPane.getChildren().add(lbl);
+            voteLabelsMap.put(d, lbl);
+        }
+        // Initial positioning pass
+        positionVoteLabels();
+        // Schedule a second pass after a pulse to refine positioning if bars shift
+        Platform.runLater(this::positionVoteLabels);
+        // Add a short delayed third pass to ensure final layout
+        new javafx.animation.PauseTransition(Duration.millis(120)).setOnFinished(e -> positionVoteLabels());
+    }
+
+    private void positionVoteLabels() {
+        if (voteLabelsMap.isEmpty()) return;
+        try { barChart.applyCss(); barChart.layout(); } catch (Exception ignore) {}
+        for (Map.Entry<XYChart.Data<String,Number>, Label> entry : voteLabelsMap.entrySet()) {
+            XYChart.Data<String,Number> data = entry.getKey();
+            Label lbl = entry.getValue();
+            Node bar = data.getNode();
+            if (bar == null) continue;
+            try {
+                Bounds barScene = bar.localToScene(bar.getBoundsInLocal());
+                Bounds barInPane = centerPane.sceneToLocal(barScene);
+                double x = barInPane.getMinX() + 2; // start of bar + small padding
+                double y = barInPane.getMinY() - lbl.getHeight() - 4; // just above bar
+                lbl.relocate(x, Math.max(2, y));
+            } catch (Exception ignore) {}
+        }
+        resolveVoteLabelCollisionsOverlay();
+    }
+
+    private void resolveVoteLabelCollisionsOverlay() {
+        if (voteLabelsMap.size() < 2) return;
+        java.util.List<Label> labels = new java.util.ArrayList<>(voteLabelsMap.values());
+        labels.sort(java.util.Comparator.comparingDouble(Label::getLayoutX));
+        for (int i = 1; i < labels.size(); i++) {
+            Label current = labels.get(i);
+            for (int j = 0; j < i; j++) {
+                Label prev = labels.get(j);
+                if (overlaps(prev, current)) {
+                    current.setLayoutY(Math.max(2, current.getLayoutY() - (prev.getHeight() + 4)));
+                    j = -1; // restart checks after shift
+                }
+            }
+        }
+    }
+
+    private boolean overlaps(Label a, Label b) {
+        double ax1 = a.getLayoutX(), ax2 = ax1 + a.getWidth();
+        double ay1 = a.getLayoutY(), ay2 = ay1 + a.getHeight();
+        double bx1 = b.getLayoutX(), bx2 = bx1 + b.getWidth();
+        double by1 = b.getLayoutY(), by2 = by1 + b.getHeight();
+        return ax1 <= bx2 && bx1 <= ax2 && ay1 <= by2 && by1 <= ay2;
     }
 }

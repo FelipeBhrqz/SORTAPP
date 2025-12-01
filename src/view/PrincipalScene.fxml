@@ -9,32 +9,44 @@
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.Pane?>
 <?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
 
-<HBox fx:id="root" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="590.0" prefWidth="966.0" xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="controllers.PrincipalSceneController">
+<HBox fx:id="root" prefHeight="590.0" prefWidth="966.0" xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="controllers.PrincipalSceneController">
    <children>
       <VBox prefHeight="590.0" prefWidth="258.0">
          <children>
-            <AnchorPane fx:id="side_ankerpane" prefHeight="603.0" prefWidth="258.0" styleClass="side_ankerpane" stylesheets="@../assets/style.css">
+            <AnchorPane fx:id="side_ankerpane" prefHeight="603.0" prefWidth="258.0" style="-fx-background-color: linear-gradient(to bottom right, #6A0DAD, #4B000F);" styleClass="side_ankerpane" stylesheets="@../assets/style.css">
                <children>
                   <ComboBox fx:id="cmbMetodo" layoutX="37.0" layoutY="42.0" prefWidth="150.0" promptText="Método" />
                   <ComboBox fx:id="cmbProvincia" layoutX="37.0" layoutY="111.0" prefWidth="150.0" promptText="Provincias" />
                   <ComboBox fx:id="cmbVuelta" layoutX="37.0" layoutY="180.0" prefWidth="150.0" promptText="Vuelta" />
-                  <Button fx:id="btnMostrar" layoutX="45.0" layoutY="413.0" mnemonicParsing="false" onAction="#onShow" text="Mostrar" />
-                  <Button fx:id="btnOrdenar" layoutX="120.0" layoutY="413.0" mnemonicParsing="false" onAction="#onSort" text="Ordenar" />
+                  <Button fx:id="btnMostrar" layoutX="45.0" layoutY="413.0" mnemonicParsing="false" onAction="#onShow" style="-fx-background-radius: 13px; -fx-background-color: #000000;" text="Mostrar" textFill="WHITE">
+                     <font>
+                        <Font name="PT Serif" size="13.0" />
+                     </font>
+                  </Button>
+                  <Button fx:id="btnOrdenar" layoutX="120.0" layoutY="413.0" mnemonicParsing="false" onAction="#onSort" style="-fx-background-radius: 13px; -fx-background-color: #000000;" text="Ordenar" textFill="WHITE">
+                     <font>
+                        <Font name="PT Serif" size="13.0" />
+                     </font>
+                  </Button>
                </children>
             </AnchorPane>
          </children>
       </VBox>
       <Pane fx:id="centerPane" prefHeight="590.0" prefWidth="774.0">
          <children>
-            <HBox fx:id="Hbox" layoutX="16.0" layoutY="442.0" prefHeight="135.0" prefWidth="524.0" />
-            <BarChart fx:id="barChart" layoutX="14.0" layoutY="24.0">
-              <xAxis>
-                <CategoryAxis side="BOTTOM" />
-              </xAxis>
-              <yAxis>
-                <NumberAxis side="LEFT" />
-              </yAxis>
+            <BarChart fx:id="barChart" layoutX="14.0" layoutY="14.0" prefHeight="550.0" prefWidth="700.0">
+               <xAxis>
+                  <CategoryAxis side="BOTTOM" />
+               </xAxis>
+               <yAxis>
+                  <NumberAxis side="LEFT">
+                     <tickLabelFont>
+                        <Font name="PT Serif Bold" size="11.0" />
+                     </tickLabelFont>
+                  </NumberAxis>
+               </yAxis>
             </BarChart>
          </children>
       </Pane>

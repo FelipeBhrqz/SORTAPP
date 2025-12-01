@@ -2,17 +2,35 @@
 
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
+<?import javafx.scene.effect.Reflection?>
 <?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.text.Font?>
 
 
-<AnchorPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="controllers.MainSceneController">
+<AnchorPane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="590.0" prefWidth="966.0" style="-fx-background-color: linear-gradient(to bottom right, #6A0DAD, #4B000F);" xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="controllers.MainSceneController">
    <children>
-      <Label layoutX="200.0" layoutY="96.0" text="SORTAPP">
+      <Label fx:id="lblTitle" layoutX="303.0" layoutY="188.0" text="SORTAPP" textFill="#e1ff00">
          <font>
-            <Font size="48.0" />
+            <Font name="Changa One" size="96.0" />
          </font>
       </Label>
-      <Button fx:id="btnElec2025" layoutX="250.0" layoutY="211.0" mnemonicParsing="false" onAction="#btnAdvance" text="Elecciones 2025" />
+      <Label layoutX="82.0" layoutY="311.0" text="Grupo 1: Felipe Bohórquez, Karen Cabascango y Sebastián Cruz. " textFill="WHITE">
+         <font>
+            <Font name="PT Serif Bold" size="26.0" />
+         </font>
+      </Label>
+      <Button fx:id="btnElec2025" layoutX="406.0" layoutY="395.0" mnemonicParsing="false" onAction="#btnAdvance" style="-fx-background-color: #ffffff;" text="Elecciones 2025" textFill="#0b1dc3">
+         <font>
+            <Font name="PT Serif Bold" size="25.0" />
+         </font>
+         <effect>
+            <Reflection />
+         </effect>
+      </Button>
+      <Label layoutX="378.0" layoutY="353.0" text="Curso: Estructura de Datos." textFill="#e1e0d1">
+         <font>
+            <Font name="PT Serif Caption Italic" size="21.0" />
+         </font>
+      </Label>
    </children>
 </AnchorPane>
