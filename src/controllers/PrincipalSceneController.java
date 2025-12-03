@@ -35,6 +35,9 @@ import model.VotoCandidato;
 
 import java.util.*;
 
+// Overlay tick labels (category names) coordination with animation helpers
+import controllers.animations.AnimationConstants;
+
 public class PrincipalSceneController {
 
     @FXML private ComboBox<String> cmbMetodo;
@@ -56,6 +59,9 @@ public class PrincipalSceneController {
     private final java.util.List<Label> valueOverlayLabels = new java.util.ArrayList<>(); // track labels added to plot area
     private final java.util.Map<XYChart.Data<String,Number>, Label> voteLabelsMap = new java.util.HashMap<>();
 
+    // Cache for overlay tick labels so animation helpers can move them
+    private final java.util.List<Text> overlayTickLabels = new java.util.ArrayList<>();
+
     @FXML
     public void initialize() {
         // llenar métodos
@@ -75,8 +81,9 @@ public class PrincipalSceneController {
             e.printStackTrace();
         }
         // estilos básicos del BarChart
-        // Disable default chart animations so bars don't animate in
         barChart.setAnimated(false);
+        ((CategoryAxis) barChart.getXAxis()).setAnimated(false);
+        ((NumberAxis) barChart.getYAxis()).setAnimated(false);
         // Hide legend (user requested) - previously true
         barChart.setLegendVisible(false);
         barChart.getData().clear();
@@ -93,8 +100,15 @@ public class PrincipalSceneController {
 
         // Recentrar automáticamente al cambiar el tamaño del pane
         try {
-            centerPane.widthProperty().addListener((obs, o, n) -> Platform.runLater(() -> { centerBarChart(); repositionPercentageOverlayLabels(); }));
-            centerPane.heightProperty().addListener((obs, o, n) -> Platform.runLater(this::repositionPercentageOverlayLabels));
+            centerPane.widthProperty().addListener((obs, o, n) -> Platform.runLater(() -> {
+                centerBarChart();
+                repositionPercentageOverlayLabels();
+                repositionOverlayTickLabels();
+            }));
+            centerPane.heightProperty().addListener((obs, o, n) -> Platform.runLater(() -> {
+                repositionPercentageOverlayLabels();
+                repositionOverlayTickLabels();
+            }));
             centerPane.widthProperty().addListener((obs, o, n) -> Platform.runLater(this::repositionValueOverlayLabels));
             centerPane.heightProperty().addListener((obs, o, n) -> Platform.runLater(this::repositionValueOverlayLabels));
         } catch (Exception ignore) {}
@@ -171,20 +185,19 @@ public class PrincipalSceneController {
             final Duration stepDuration = Duration.millis(stepMs);
 
             Platform.runLater(() -> {
-                // Prepare overlays/tick cache using any of the animation classes (identical logic)
-                // We choose BubbleSortAnimation as generic prep; behavior is the same.
-                try { BubbleSortAnimation.prepareOverlays(barChart, centerPane, series); } catch (Exception ignore) {}
-
                 Runnable after = () -> {
                     applyCategoryOrder(votos);
-                    renderBarChartCandidatos(votos);
+                    refreshOverlaysAfterAnimation();
                 };
 
                 if ("Bubble Sort".equals(metodo)) {
+                    BubbleSortAnimation.prepareTickLabelCache(barChart, centerPane, series);
                     BubbleSortAnimation.animateSwapsOnSeries(barChart, centerPane, series, swaps, stepDuration, after);
                 } else if ("Insertion Sort".equals(metodo)) {
+                    InsertionSortAnimation.prepareTickLabelCache(barChart, centerPane, series);
                     InsertionSortAnimation.animateSwapsOnSeries(barChart, centerPane, series, swaps, stepDuration, after);
                 } else {
+                    MergeSortAnimation.prepareTickLabelCache(barChart, centerPane, series);
                     MergeSortAnimation.animateSwapsOnSeries(barChart, centerPane, series, swaps, stepDuration, after);
                 }
             });
@@ -257,7 +270,62 @@ public class PrincipalSceneController {
             try { if (barChart != null) { barChart.applyCss(); barChart.layout(); } } catch (Exception ignore) {}
             // Add absolute value overlays (black, left-aligned, collision aware)
             addValueLabels(barChart);
+            buildOverlayTickLabels(series);
         });
+    }
+
+    private void buildOverlayTickLabels(XYChart.Series<String, Number> series) {
+        try {
+            overlayTickLabels.clear();
+            // remove previous overlays from centerPane
+            centerPane.getChildren().removeIf(node -> "overlay-tick".equals(node.getUserData()));
+            // hide native tick labels to avoid duplicates
+            ((CategoryAxis) barChart.getXAxis()).setTickLabelsVisible(false);
+            Bounds chartBounds = barChart.getBoundsInParent();
+            double baseY = chartBounds.getMaxY() + 52;
+            for (XYChart.Data<String, Number> data : series.getData()) {
+                Node barNode = data.getNode();
+                if (barNode == null) continue;
+                Bounds barSceneBounds = barNode.localToScene(barNode.getBoundsInLocal());
+                double sceneCenterX = barSceneBounds.getMinX() + barSceneBounds.getWidth() / 2.0;
+                double localCenterX = centerPane.sceneToLocal(sceneCenterX, barSceneBounds.getMinY()).getX();
+                Text label = new Text(data.getXValue());
+                label.getStyleClass().add("overlay-tick-label");
+                label.setFont(Font.font(10));
+                label.setRotate(90);
+                label.setUserData("overlay-tick");
+                label.setLayoutX(localCenterX - label.getLayoutBounds().getWidth() / 2.0);
+                label.setLayoutY(baseY);
+                centerPane.getChildren().add(label);
+                overlayTickLabels.add(label);
+            }
+            barChart.getProperties().put(AnimationConstants.OVERLAY_TICK_LABELS_KEY, overlayTickLabels);
+            Platform.runLater(this::repositionOverlayTickLabels);
+        } catch (Exception ignore) {}
+    }
+
+    private void repositionOverlayTickLabels() {
+        if (barChart == null || centerPane == null || overlayTickLabels.isEmpty()) return;
+        XYChart.Series<String, Number> series = barChart.getData().isEmpty() ? null : barChart.getData().get(0);
+        if (series == null) return;
+        try { barChart.applyCss(); barChart.layout(); } catch (Exception ignore) {}
+        Bounds chartBounds = barChart.getBoundsInParent();
+        double baseY = chartBounds.getMaxY() + 52;
+        int limit = Math.min(overlayTickLabels.size(), series.getData().size());
+        for (int idx = 0; idx < limit; idx++) {
+            Text label = overlayTickLabels.get(idx);
+            XYChart.Data<String, Number> data = series.getData().get(idx);
+            Node barNode = data.getNode();
+            if (barNode == null) continue;
+            try {
+                Bounds barSceneBounds = barNode.localToScene(barNode.getBoundsInLocal());
+                double sceneCenterX = barSceneBounds.getMinX() + barSceneBounds.getWidth() / 2.0;
+                double localCenterX = centerPane.sceneToLocal(sceneCenterX, barSceneBounds.getMinY()).getX();
+                double textW = label.getLayoutBounds().getWidth();
+                label.setLayoutX(localCenterX - textW / 2.0);
+                label.setLayoutY(baseY);
+            } catch (Exception ignore) {}
+        }
     }
 
     // -------- Value overlays (absolute votes) --------
@@ -580,5 +648,16 @@ public class PrincipalSceneController {
         double bx1 = b.getLayoutX(), bx2 = bx1 + b.getWidth();
         double by1 = b.getLayoutY(), by2 = by1 + b.getHeight();
         return ax1 <= bx2 && bx1 <= ax2 && ay1 <= by2 && by1 <= ay2;
+    }
+
+    private void refreshOverlaysAfterAnimation() {
+        Platform.runLater(() -> {
+            if (barChart.getData().isEmpty()) return;
+            XYChart.Series<String, Number> series = barChart.getData().get(0);
+            try { barChart.applyCss(); barChart.layout(); } catch (Exception ignore) {}
+            addValueLabels(barChart);
+            repositionOverlayTickLabels();
+            attachAndShowVoteLabels();
+        });
     }
 }
